@@ -127,12 +127,12 @@ def test_function_calling_examples(model: AutoModelForCausalLM,
 
 if __name__ == "__main__":
 
-    # model_name = "Qwen/Qwen2.5-7B-Instruct"
-    # custom_pad_token = "<|im_end|>"
+    model_name = "Qwen/Qwen2.5-7B-Instruct"
+    custom_pad_token = "<|im_end|>"
 
 
-    model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
-    custom_pad_token = "<|eot_id|>"
+    # model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
+    # custom_pad_token = "<|eot_id|>"
     model_config = auto_configure_model(model_name, custom_pad_token=custom_pad_token)
     training_config = create_training_config(model_name)
 

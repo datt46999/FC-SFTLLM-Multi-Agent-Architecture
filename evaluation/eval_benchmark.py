@@ -6,7 +6,7 @@ import requests
 import pandas as pd
 import time
 from langchain_core.messages import HumanMessage
-from agents.agent import build_graph
+from agent.graph import build_graph
 
 
 
