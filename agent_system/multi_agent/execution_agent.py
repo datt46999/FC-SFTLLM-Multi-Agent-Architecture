@@ -1,74 +1,69 @@
-import asyncio
-from agent_system.multi_agent.graph import AgentState
+import operator
+import functools
 
-class ExecutionAgent:
-    def __init__(self, llm):
-        self.llm = llm
-        self.max_iterations = 3
+from typing import TypedDict, List, Annotated
 
-    async def run(self, state: AgentState) -> AgentState:
-        query = state["user_query"]
-        iterations = 0
-        history = []
+from langchain_core.messages import BaseMessage
+from lanchain_openai import ChatOpenAI
+from langgraph.prebuilt import create_react_agent
+from langgraph.graph import StateGraph, START, END
 
-        while iterations < self.max_iterations:
-            # --- REASON ---
-            thought = await self._think(query, history)
-            history.append(f"Thought: {thought}")
+from agent_system.multi_agent.Supervisor_agent import agent_node, create_supervisor
+from agent_system.tools import IMAGE_GENERATE_TOOLS, CODE_INTERPRETER_TOOLS, DOCUMENT_PROCESSING_TOOLS, MATHEMATICAL_TOOLS
 
-            if "Final Answer" in thought:
-                answer = thought.split("Final Answer:")[-1].strip()
-                return {"execution_output": answer}
 
-            # --- ACT ---
-            action, code = await self._parse_action(thought)
+def Execution_agent():
+    """  Create external agent search """
+    class ExcutionTeamState(TypedDict):
+        messages: Annotated[List[BaseMessage], operator.add]
+       
+        next: str
 
-            # --- OBSERVE ---
-            observation = await self._run_code(code)
-            history.append(f"Observation: {observation}")
+    llm = ChatOpenAI(model="gpt-4", temperature=0)
 
-            iterations += 1
+    image_agent = create_react_agent(llm, tools=IMAGE_GENERATE_TOOLS)
+    imge_node = functools.partial(agent_node, agent=image_agent, name="ImageGenerate")
 
-        final = await self.llm.ainvoke(f"Summarize:\n{chr(10).join(history)}")
-        return {"execution_output": final.content}
+    code_interp_agent = create_react_agent(llm, tools=CODE_INTERPRETER_TOOLS)
+    code_interp_node = functools.partial(agent_node, agent=code_interp_agent, name="CodeInterpreter")
 
-    async def _think(self, query: str, history: list) -> str:
-        prompt = f"""You are a code execution agent.
-            Question: {query}
-            {chr(10).join(history)}
+    docs_agent = create_react_agent(llm, tools=DOCUMENT_PROCESSING_TOOLS,)
+    docs_node = functools.partial(agent_node, agent=docs_agent, name="Document")
 
-            Write code to solve this, or say "Final Answer: <result>" if done.
-            Format:
-            Action: execute
-            Action Input: <python code>
-        """
-        response = await self.llm.ainvoke(prompt)
-        return response.content
+    mathem_agent = create_react_agent(llm, tools=MATHEMATICAL_TOOLS)
+    mathem_node = functools.partial(agent_node, agent=mathem_agent, name="Mathenatical")
+    
+    supervisor_agent = create_supervisor(
+        llm,
+        "You are a supervisor tasked with managing a conversation between the"
+        " following workers:  ExternalTool. Given the following user request,"
+        " respond with the worker to act next. Each worker will perform a"
+        " task and respond with their results and status. When finished,"
+        " respond with FINISH.",
+        ["ExternalTool"],
+    )
 
-    async def _parse_action(self, thought: str):
-        # parse Action / Action Input from thought
-        lines = thought.strip().split("\n")
-        action, code = "", []
-        capture = False
-        for line in lines:
-            if line.startswith("Action:"):
-                action = line.replace("Action:", "").strip()
-            elif line.startswith("Action Input:"):
-                capture = True
-            elif capture:
-                code.append(line)
-        return action, "\n".join(code)
+    execute_graph = StateGraph(ExcutionTeamState)
 
-    async def _run_code(self, code: str) -> str:
-        try:
-            result = await asyncio.to_thread(self._exec_sync, code)
-            return result
-        except Exception as e:
-            return f"Error: {str(e)}"
+    execute_graph.add_node("ImageGenerate", imge_node)
+    execute_graph.add_node("CodeInterpreter", code_interp_node )
+    execute_graph.add_node("Document", docs_node)
+    execute_graph.add_node("Mathenatical", mathem_node)
 
-    def _exec_sync(self, code: str) -> str:
-        import io, contextlib
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            exec(code, {})
-        return buf.getvalue() or "Done"
+ 
+    execute_graph.add_edge("ImageGenerate", "supervisor")
+    execute_graph.add_edge("CodeInterpreter", "supervisor")
+    execute_graph.add_edge("Document", "supervisor")
+    execute_graph.add_edge("Mathenatical", "supervisor")
+    execute_graph.add_conditional_edges(
+        "supervisor",
+        lambda x: x["next"],
+        {"ImageGenerate": "ImageGenerate",
+         "CodeInterpreter": "CodeInterpreter",
+         "Document": "Document",
+         "Mathenatical": "Mathenatical",
+         "FINISH": END},
+    )
+    execute_graph.add_edge(START, "supervisor")
+    
+    return execute_graph.compile()

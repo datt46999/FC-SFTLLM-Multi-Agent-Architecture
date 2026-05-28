@@ -1,6 +1,6 @@
 import gradio as gr
 from langchain_core.messages import HumanMessage
-from agent.graph import build_graph
+from agent_system.orchestratory import create_super_graph
 
 from dotenv import load_dotenv
 from pathlib import Path
@@ -12,7 +12,7 @@ _graphs = {}
 
 def get_graph(provider: str):
     if provider not in _graphs:
-        _graphs[provider] = build_graph(provider)
+        _graphs[provider] = create_super_graph(provider)
     return _graphs[provider]
 
 

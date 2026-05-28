@@ -1,56 +1,52 @@
-from agent_system.multi_agent.graph import AgentState
+import operator
+import functools
 
-class ExternalAgent:
-    def __init__(self, llm, search_tool):
-        self.llm = llm
-        self.search_tool = search_tool
-        self.max_iterations = 3
+from typing import TypedDict, List, Annotated
 
-    async def run(self, state: AgentState) -> AgentState:
-        query = state["user_query"]
-        history = []
-        iterations = 0
+from langchain_core.messages import BaseMessage
+from lanchain_openai import ChatOpenAI
+from langgraph.prebuilt import create_react_agent
+from langgraph.graph import StateGraph, START, END
 
-        while iterations < self.max_iterations:
-            # --- REASON ---
-            thought = await self._think(query, history)
-            history.append(f"Thought: {thought}")
+from agent_system.multi_agent.Supervisor_agent import agent_node, create_supervisor
+from agent_system.tools import EXTERNAL_TOOLs
 
-            if "Final Answer" in thought:
-                answer = thought.split("Final Answer:")[-1].strip()
-                return {"external_output": answer}
 
-            # --- ACT ---
-            _, search_query = await self._parse_action(thought)
+def External_agent():
+    """  Create external agent search """
+    class ResearchTeamState(TypedDict):
+        messages: Annotated[List[BaseMessage], operator.add]
+       
+        next: str
 
-            # --- OBSERVE ---
-            results = await self.search_tool.arun(search_query)
-            history.append(f"Observation: {results}")
+    llm = ChatOpenAI(model="gpt-4", temperature=0)
 
-            iterations += 1
+   
+    research_agent = create_react_agent(llm, tools=EXTERNAL_TOOLs)
+    research_node = functools.partial(agent_node, agent=research_agent, name="ExternalTool")
+    
+    supervisor_agent = create_supervisor(
+        llm,
+        "You are a supervisor tasked with managing a conversation between the"
+        " following workers:  ExternalTool. Given the following user request,"
+        " respond with the worker to act next. Each worker will perform a"
+        " task and respond with their results and status. When finished,"
+        " respond with FINISH.",
+        ["ExternalTool"],
+    )
 
-        final = await self.llm.ainvoke(f"Summarize:\n{chr(10).join(history)}")
-        return {"external_output": final.content}
+    research_graph = StateGraph(ResearchTeamState)
 
-    async def _think(self, query, history):
-        prompt = f"""You are a web search agent.
-        Question: {query}
-        {chr(10).join(history)}
+    research_graph.add_node("ExternalTool", research_node)
+    research_graph.add_node("supervisor", supervisor_agent)
 
-        Search for info or say "Final Answer: <answer>" if done.
-        Format:
-        Action: search
-        Action Input: <search query>
-        """
-        res = await self.llm.ainvoke(prompt)
-        return res.content
-
-    async def _parse_action(self, thought: str):
-        lines = thought.strip().split("\n")
-        action, action_input = "", ""
-        for line in lines:
-            if line.startswith("Action:"):
-                action = line.replace("Action:", "").strip()
-            if line.startswith("Action Input:"):
-                action_input = line.replace("Action Input:", "").strip()
-        return action, action_input
+ 
+    research_graph.add_edge("ExternalTool", "supervisor")
+    research_graph.add_conditional_edges(
+        "supervisor",
+        lambda x: x["next"],
+        {"ExternalTool": "ExternalTool", "FINISH": END},
+    )
+    research_graph.add_edge(START, "supervisor")
+    
+    return research_graph.compile()
