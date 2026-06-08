@@ -1,6 +1,6 @@
+from typing import List
 from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_community.document_loaders import WikipediaLoader
-from langchain_community.document_loaders import ArxivLoader
+from langchain_community.document_loaders import WikipediaLoader,ArxivLoader, WebBaseLoader
 
 from langchain_core.tools import tool
 
@@ -50,3 +50,15 @@ def arxiv_search(query: str) -> str:
         ]
     )
     return {"arxiv_results": formatted_search_docs}
+
+@tool
+def scrape_webpages(urls: List[str]) -> str:
+    """Use requests and bs4 to scrape the provided web pages for detailed information."""
+    loader = WebBaseLoader(urls)
+    docs = loader.load()
+    return "\n\n".join(
+        [
+            f'<Document name="{doc.metadata.get("title", "")}">\n{doc.page_content}\n</Document>'
+            for doc in docs
+        ]
+    )

@@ -14,44 +14,42 @@ from langchain_community.vectorstores import SupabaseVectorStore,FAISS
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
-from regatouille import REGPretrainedModel
+from flashrank import Ranker, RerankRequest
 
 
 from supabase.client import Client, create_client
-
-
-from agent_system.prompt_templates import template_test
 
 
 # Load .env
 env_path = Path(".env")
 load_dotenv(dotenv_path=env_path)
 
-RERANKER = REGPretrainedModel.from_retrained("colbert-ir/colbertv2.0")
 
 
-def top_rags(question:str, 
-             knowledge_index: FAISS, 
-             reranker: Optional[REGPretrainedModel] = None,
-             num_retrieved_docs: int = 30,
-            num_docs_final: int = 5,):
-    """
-    Retriever top documents
-    """
-    print("Retriever top documents......")
+def top_rags(
+    question: str,
+    knowledge_index: FAISS,
+    reranker: Optional[Ranker] = None,           
+    num_retrieved_docs: int = 30,
+    num_docs_final: int = 5,
+) -> list[str]:
+    """Retrieve top documents from vector store with optional reranking."""
+    print("Retrieving top documents...")
 
     relevant_docs = knowledge_index.similarity_search(
-        query= question,
-        k = num_retrieved_docs
+        query=question,
+        k=num_retrieved_docs
     )
-    relevant_docs = [doc.page_content for doc in relevant_docs]
+    doc_texts = [doc.page_content for doc in relevant_docs]
 
-    # option rerank result
     if reranker:
-        relevant_docs = reranker.rerank(question, relevant_docs, k = num_docs_final)
-        relevant_docs = [doc["content"]for doc in relevant_docs]
-    relevant_docs = relevant_docs[:num_docs_final]
-    return relevant_docs
+        # ✅ flashrank API — needs list of dicts with "id" and "text"
+        passages = [{"id": i, "text": text} for i, text in enumerate(doc_texts)]
+        request = RerankRequest(query=question, passages=passages)
+        results = reranker.rerank(request)
+        return [r["text"] for r in results[:num_docs_final]] 
+    else:
+        return doc_texts[:num_docs_final]
 
 def get_vectorstore(model_embedding):
     """

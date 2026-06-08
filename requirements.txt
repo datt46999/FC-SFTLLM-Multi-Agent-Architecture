@@ -9,6 +9,9 @@ langchain-huggingface
 langchain-groq
 langchain-tavily
 langchain-chroma
+langchain_experimental
+langchain_openai
+sentence-transformers
 langgraph
 huggingface_hub
 supabase
@@ -17,7 +20,5 @@ pymupdf
 wikipedia
 pgvector
 python-dotenv
-pytesseract
-matplotlib
-sentence_transformers
+
 

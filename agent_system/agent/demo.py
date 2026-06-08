@@ -1,0 +1,2 @@
+import ragatouille
+print(ragatouille.__version__)

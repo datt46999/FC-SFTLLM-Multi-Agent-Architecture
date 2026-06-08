@@ -7,7 +7,9 @@ This project consists of two main path:
 Fine-tune Llama 3 and Qwen2.5 language models to improve Function Calling capabilities using the xLAM dataset and QLoRA.
 
 ### Chatbot Agent
-Develop an Multi agent in **langgraphwith** and workflow orchestratory include **RAG_AGENT**, **execution_agent** and **external_agent**
+Develop an Multi agent in **langgraphwith** and supervisor workflow  include **RE_Retriever**, **Researcher**, **ScraperWeb** and **Coder**
+
+
 Overall structure:
 
 ![alt text](image/structure.png)
@@ -27,26 +29,18 @@ project/
 │   ├── tools/
 │   │   ├── Search.py
 │   │   ├── code_Interpreter.py
-│   │   ├── Mathenmatical.py
-│   │   ├── document_proccesing.py
-│   │   ├── image_generation.py
 │   │   ├── code_multilang.py
 │   │   └── process.....
 │   │
-│   ├── multi_agent/
-│   │   ├── RAG_agent.py
-│   │   ├── execution_agent.py
-│   │   ├── external_agent.py
-│   │   ├── graph.py
+│   ├── agent/
+│   │   ├── model_Finetune.py
+│   │   ├── supervisor.py         #agent system
+│   │   ├── system_prompts.py
 │   │
 │   ├── rag/
 │   │   ├── __init__.py
 │   │   ├── embeding.py          
 │   │   └── retriever.py         
-│   │                 # select model llms for agent
-│   └── prompt_templates.py
-│   ├── orchestratory.py    
-│   ├── orchestratory.py                  # build agent with format langgraph
 │
 ├── Fine_tune/
 │   ├── Configs/
@@ -110,7 +104,7 @@ See how to use to [Finetune](IF_YOU_WANT_FINE_TUNE:).
 
 
 
-# Agent Chatbot
+# Agent system
 
 A multi-agent chatbot system combining Retrieval-Augmented Generation (RAG), ReAct reasoning, reranking, and fine-tuned Large Language Models on the xLAM dataset.
 
@@ -344,16 +338,29 @@ pip install -r requirements.txt
 
 Create a `.env` file with your API keys:
 ```
-SUPABASE_URL=your_supabase_url
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_key
-OPENAI_API_KEY=your_openai_api_key
-HF_TOKEN=your_hf_token
-TAVILY_API_KEY=your_tavily_api_key
+SUPABASE_URL=YOUR_SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_KEY
 
 
-LANGFUSE_SECRET_KEY=your_langfuse_secret_key
-LANGFUSE_PUBLIC_KEY=your_langfuse_public_key
-LANGFUSE_BASE_URL=https://cloud.langfuse.com # 🇪🇺 EU region
+
+# LLM_BACKEND=OPENAI
+# LLM_BACKEND = OPENROUTER
+LLM_BACKEND = LOCAL
+
+OPENAI_MODEL = gpt-4o
+OPENROUTER_MODEL = qwen/qwen3-32b
+LOCAL_MODEL = gugukaka/Qwen2.5-7B-Instruct-xLAM #gugukaka/Qwen2_5_7B_Instruct_xLAM
+
+HF_TOKEN=YOUR_HF_TOKEN
+OPENROUTER_API_KEY= YOUR_OPENROUTER_API_KEY
+OPENAI_API_KEY=YOUR_OPENAI_API_KEY=
+
+TAVILY_API_KEY=YOUR_TAVILY_API_KEY
+
+
+LANGFUSE_SECRET_KEY=YOUR_LANGFUSE_SECRET_KEY
+LANGFUSE_PUBLIC_KEY=YOUR_LANGFUSE_PUBLIC_KEY
+LANGFUSE_BASE_URL="https://cloud.langfuse.com"# 🇪🇺 EU region
 ```
 ### **4. Database Setup (if you use Supabase othe can drop this step)**
 Execute this SQL in your Supabase database:
@@ -417,7 +424,7 @@ Access at: `http://localhost:7860`
 ### code Evaluation: [Huggingface](https://huggingface.co/spaces/gugukaka/GAIA_agent) 
 ## 🔗 **Resources**
 
-- [GAIA Benchmark](https://huggingface.co/spaces/gaia-benchmark/leaderboard)
+
 - [Hugging Face Agents Course](https://huggingface.co/agents-course)
 - [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
 - [Supabase Vector Store](https://supabase.com/docs/guides/ai/vector-columns)
