@@ -10,16 +10,16 @@ from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langchain_experimental.tools import PythonREPLTool
 from langchain_community.vectorstores import FAISS
-
-
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
 from agent_system.tools import TOOLS_RESEARCHER, TOOLS_SCRAPE, CODE_INTERPRETER
 from agent_system.rag.retriever import top_rags
-from agent_system.agent.system_prompts import system_prompt
-from agent_system.agent.model_Finetune import get_llm
-from agent_system.agent.local_format import Format_agent
+from agent_system.agent.system_prompts import system_prompt, researcher_prompt, rag_prompt, scraper_prompt, coder_prompt
+from agent_system.agent.get_model import get_llm
+# from agent_system.agent.local_loader import Format_agent
 from langchain_huggingface import HuggingFaceEmbeddings
 
 EMBEDDING_MODEL_NAME = "BAAI/bge-m3"  # must match what you used in embedding.py
@@ -81,9 +81,22 @@ python_repl_tool = PythonREPLTool()
 system
 ===================================================
 """
-prompt = system_prompt
+
 members = ["RE_Retriever","Researcher", "ScraperWeb", "Coder"]
 options = ["FINISH"] + members
+
+
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", system_prompt),
+        MessagesPlaceholder(variable_name = "messages"),
+        (
+            "system",
+            "Give the conversation above, who should act next?"
+            "Or should we FINISH? Select one of: {options}",
+        ),
+    ]
+).partial(options =str(options), members = ", ".join(members))
 
 """
 ===================================================
@@ -100,11 +113,24 @@ class AgentState(TypedDict):
 
 
 
-def _make_agent(llm, tools, backend, max_iterations: int = 2):
-    if backend == "LOCAL":
-        return Format_agent(llm, tools, max_iterations=max_iterations)
+def _make_agent(llm, tools, backend, name):
+    if name == "RE_Retriever":
+        prompt = rag_prompt
+    elif name == "Researcher":
+        prompt = researcher_prompt
+    elif name == "ScraperWeb":
+        prompt = scraper_prompt
+    elif name == "Coder":
+        prompt = coder_prompt
     else:
-        return create_react_agent(llm, tools)
+        raise f"Name of prompt opion mush be in {members}"
+
+    if backend == "LOCAL":
+        return create_agent(llm, tools = tools, prompt = prompt)
+    else:
+        return create_react_agent(llm, tools =tools)
+       
+    
 def agent_node(state, agent, name):
     """
     Process state through  an agent and return update state
@@ -112,50 +138,31 @@ def agent_node(state, agent, name):
     results = agent.invoke(state)
     return {"messages": [HumanMessage(content = results["messages"][-1].content, name = name)]}
     
-
 def supervisor_agent(state):
-    if backend in ("OPENAI", "OPENROUTER"):
-        supervisor_chain = prompt | llm.with_structured_output(RouterResponse)
-        result = supervisor_chain.invoke({
-            "messages": state["messages"],
-            "members": ", ".join(members),
-            "options": ", ".join(options),
-        })
-        print(f"[Supervisor] routing to: {result.next}")
-        return {"next": result.next} 
-    else:  # LOCAL
-       
-        supervisor_chain = prompt | llm
-        response = supervisor_chain.invoke({
-            "messages": state["messages"],
-            "members": ", ".join(members),
-            "options": ", ".join(options),
-        })
-        text = response.content if hasattr(response, "content") else str(response)
-        print(f"[Supervisor LOCAL] raw: {text}")
-        for option in options:
-            if option in text:
-                print(f"[Supervisor LOCAL] routing to: {option}")
-                return {"next": option}
-        return {"next": "FINISH"}
-        # fallback
+    llm,_ = get_llm()
+    suppervisor_chain = prompt | llm.with_structured_output(RouterResponse) 
+    return  suppervisor_chain.invoke(state)
+    
+    # supervisor_chain = prompt | llm.with_structured_output(RouteResponse)
+    # return supervisor_chain.invoke(state)
+
       
 def create_graph():
     """ 
     Create configure the supervisor graph
     """
+    llm, _ = get_llm()
 
-
-    RAG_agent = _make_agent(llm, [retriever_tool], backend)
+    RAG_agent = _make_agent(llm, [retriever_tool], backend,name = "RE_Retriever")
     RAG_node = functools.partial(agent_node, agent = RAG_agent, name = "RE_Retriever")
 
-    researcher_agent = _make_agent(llm, researcher_tools, backend)
+    researcher_agent = _make_agent(llm, researcher_tools, backend, name = "Researcher")
     researcher_node = functools.partial(agent_node, agent = researcher_agent, name = "Researcher")
 
-    scrape_agent = _make_agent(llm, scrape_tools, backend)
+    scrape_agent = _make_agent(llm, scrape_tools, backend, name = "ScraperWeb")
     scrape_node = functools.partial(agent_node, agent = scrape_agent, name = "ScraperWeb")
 
-    Coder_agent = _make_agent(llm, [ python_repl_tool, code_interpreter], backend)
+    Coder_agent = _make_agent(llm, [ python_repl_tool, code_interpreter], backend, name = "Coder")
     Coder_node = functools.partial(agent_node, agent = Coder_agent , name = "Coder")
 
     workflow = StateGraph(AgentState)
@@ -176,7 +183,7 @@ def create_graph():
     return workflow.compile()
 
 
-def test():
+def test(query):
     """
     Run supervisor system with example queries
     """
@@ -184,24 +191,39 @@ def test():
 
 
 
-    for s in graph.stream(
-        {
-            "messages":[
-                HumanMessage(content="What's the weather in Ho Chi Minh today?")
-            ]
-        },
-        config={"recursion_limit": 20} 
-
-    ):
-        if "__end__" not in s:
-            print(s)
-            print("---"*100)
-
-
-if __name__ =="__main__":
-    test()
+    # for s in graph.stream(
+    #     {
+    #         "messages":[
+    #             HumanMessage(content=query)
+    #         ]
+    #     }
+    # ):
+    #     if "__end__" not in s:
+    #         print(s)
 
     
+    result = graph.invoke(
+    {
+        "messages": [HumanMessage(content=query)]
+    }
+    )
+    print("---"*100)
+    print(result["messages"][-1].content)
+           
+
+if __name__ =="__main__":
+    while True:
+        query = input("Your query: ")
+        if query in ['EXIT', 'Exit', 'exit']:
+            print("==="*100)
+            print("SYSTEM: CLOSE")
+            print("==="*100)
+            break 
+        else:
+            
+            test(query)
+
+
 
 
 

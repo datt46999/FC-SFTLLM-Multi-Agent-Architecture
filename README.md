@@ -9,10 +9,12 @@ Fine-tune Llama 3 and Qwen2.5 language models to improve Function Calling capabi
 ### Chatbot Agent
 Develop an Multi agent in **langgraphwith** and supervisor workflow  include **RE_Retriever**, **Researcher**, **ScraperWeb** and **Coder**
 
+## Results demo:
 
-Overall structure:
+<video src="image/demo.mp4" controls width="800"></video>
 
-![alt text](image/structure.png)
+
+
 
 ### Hardware Requirements (Fine tune):
 

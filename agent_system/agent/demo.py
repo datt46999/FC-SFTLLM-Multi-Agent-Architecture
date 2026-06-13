@@ -1,2 +1,2 @@
-import ragatouille
-print(ragatouille.__version__)
+import torch
+print(torch.__version__)
