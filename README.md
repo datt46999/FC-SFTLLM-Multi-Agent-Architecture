@@ -1,4 +1,4 @@
-**Chatbot-Q&A-agent**
+**FC-SFTLLM-Multi-Agent-Architecture**
 
 # 🌟 **Introduction**
 This project consists of two main path:
@@ -6,12 +6,19 @@ This project consists of two main path:
 ### Fine-tuning Llama 3 and Qwen2.5
 Fine-tune Llama 3 and Qwen2.5 language models to improve Function Calling capabilities using the xLAM dataset and QLoRA.
 
-### Chatbot Agent
+### Agent system
+
 Develop an Multi agent in **langgraphwith** and supervisor workflow  include **RE_Retriever**, **Researcher**, **ScraperWeb** and **Coder**
 
 ## Results demo:
 
-<video src="image/demo.mp4" controls width="800"></video>
+
+
+
+<video src="https://github.com/user-attachments/assets/de0f7b2f-3859-40e5-b136-3997a32df5ea" controls="controls" muted="muted" style="max-width: 100%; max-height: 500px;"></video>
+
+
+
 
 
 
@@ -38,6 +45,8 @@ project/
 │   │   ├── model_Finetune.py
 │   │   ├── supervisor.py         #agent system
 │   │   ├── system_prompts.py
+│   │   ├── local_loader.py
+│   │   ├── get_model.py
 │   │
 │   ├── rag/
 │   │   ├── __init__.py
@@ -114,50 +123,33 @@ A multi-agent chatbot system combining Retrieval-Augmented Generation (RAG), ReA
 
 ## Features
 
-- Multi-agent workflow using LangGraph
-- ReAct-based reasoning and action loop
-- Retrieval-Augmented Generation (RAG)
-- FAISS vector database for semantic search
-- Reranker for document refinement
-- Fine-tuned LLM on xLAM dataset
-- Asynchronous retrieval pipeline
-- Modular architecture for extension
+### Super Supervision 
+- Models a supervisor-worker relationship for intelligent task delegation
+- Routes tasks between research and coding agents based on requirements
+- Manages conversation flow with clear transitions between agents
+- Makes real-time decisions about which agent should act next
 
----
+### RE_Retriever agent
+- Embedding dataset from m-ric/huggingface_doc od Hungging face and GIAI(val)
+- Convert documents into chunk with  and save it in vetorstore
+- Using nearest neighbor search algorithm
+- Rerank the results with a more powerful retrieval model before keeping only the ```top_k```
 
-## System Architecture
 
-```text
-                    User Query
-                         │
-                         ▼
-                ┌────────────────┐
-                │ Multi-Agent    │
-                │ Controller     │
-                └────────┬───────┘
-                         │
-          ┌──────────────┴──────────────┐
-          │                             │
-          ▼                             ▼
- ┌─────────────────┐          ┌─────────────────┐
- │ RAG Agent       │          │ Other Agents    │
- │ (ReAct Loop)    │          │ (Optional)      │
- └────────┬────────┘          └─────────────────┘
-          │
-          ▼
- ┌─────────────────┐
- │ Retrieve Docs   │
- │ FAISS + Rerank  │
- └────────┬────────┘
-          │
-          ▼
- ┌─────────────────┐
- │ LLM Generation  │
- └────────┬────────┘
-          │
-          ▼
-      Final Answer
-```
+### Researcher agent
+- Using API key of Tavily Search Results
+### ScraperWeb agent
+- Scrape data document from Wikipedia, Arxiv, and WebBase
+
+Coder:
+- Execute code in multiple languages (Python, Bash, SQL, C, Java).
+
+
+
+
+
+
+
 
 ---
 
@@ -166,24 +158,10 @@ A multi-agent chatbot system combining Retrieval-Augmented Generation (RAG), ReA
 The RAG agent performs iterative reasoning and retrieval using a ReAct-style workflow.
 
 ### Workflow
+-  with model embedding is "BAAI/bge-m3"
+   + Using  Recursive Character Text Splitter -> Del Deduplicate content ->  find top_k by rerank retriever with flashrank -> agent system (react) ->(yes) -> finnal result
 
-```text
-User Query
-     ↓
-Reasoning (Thought)
-     ↓
-Need More Information?
-     ↓ Yes
-Generate Search Query
-     ↓
-Retrieve Documents
-     ↓
-Observe Results
-     ↓
-Repeat
-     ↓
-Generate Final Answer
-```
+
 
 ### Components
 
@@ -200,47 +178,11 @@ Provides execution and processing capabilities.
 
 ### 💻 Code Interpreter Tools
 
-- Multi-language execution:
-  - Python
-  - Bash
-  - SQL
-  - C
-  - Java
-
+- Multi-language execution:Python, Bash, SQL, C, Java
 - Plot generation with Matplotlib
 - DataFrame analysis using Pandas
 - Error handling and reporting
 
-### 🧮 Mathematical Tools
-
-- Basic operations:
-  - Addition
-  - Subtraction
-  - Multiplication
-  - Division
-
-- Advanced functions:
-  - Modulus
-  - Power
-  - Square root
-
-- Complex number support
-
-### 📄 Document Processing Tools
-
-- File save/read/download
-- CSV analysis
-- Excel processing
-- OCR using Tesseract
-
-### 🖼️ Image Processing Tools
-
-- Image property analysis
-- Resize, rotate, crop, flip
-- Brightness and contrast adjustment
-- Draw shapes and annotations
-- Image generation
-- Combine multiple images
 
 ---
 
@@ -250,16 +192,11 @@ Provides access to external information sources.
 
 ### 🌐 Search Tools
 
-- Wikipedia Search
-  - Up to 2 results
+- Wikipedia Search - Up to 2 results
 
-- Web Search
-  - Tavily-powered
-  - Up to 3 results
+- Web Search - Tavily-powered - Up to 3 results
 
-- arXiv Search
-  - Academic paper retrieval
-  - Up to 3 results
+- arXiv Search - Academic paper retrieval - Up to 3 results
 
 ---
 ### **LangGraph State Machine**
@@ -273,7 +210,6 @@ Provides access to external information sources.
 4. **Conditional Routing**: Dynamically routes between assistant and tools
 
 
-## **Tool Categories**
 
 
 
@@ -418,12 +354,26 @@ Access at: `http://localhost:7860`
 
 ### evaluation 
 ```bash
-python -m evaluaion.eval_benchmark
+python -m evaluaion.elva_Gaia.py
 ```
 Access at: `http://localhost:7860`
 
 
 ### code Evaluation: [Huggingface](https://huggingface.co/spaces/gugukaka/GAIA_agent) 
+### Evaluation by LLM-as-a-judge:
+if you don't create dataset in langfuse 
+```bash
+python -m evaluaion.create_data_in_langfuse
+```
+
+then
+```bash
+python -m evaluaion.llm_as_a_judge
+```
+result after use  llm = gpt-4o achieve to 0.70 answer correct with 50 question of junzhang1207/search-dataset" in offline evaluation.
+
+
+![alt text](image/gpt-4_llm_as_a_judge.png)
 ## 🔗 **Resources**
 
 
