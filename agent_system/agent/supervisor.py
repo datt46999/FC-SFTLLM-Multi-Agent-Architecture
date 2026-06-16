@@ -1,5 +1,6 @@
 import operator
 import functools
+import re
 from flashrank import Ranker, RerankRequest
 from typing import Annotated, Literal, Sequence, TypedDict
 from pydantic import BaseModel
@@ -14,6 +15,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.agents import create_agent
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
+from langchain_core.output_parsers import StrOutputParser
 
 from agent_system.tools import TOOLS_RESEARCHER, TOOLS_SCRAPE, CODE_INTERPRETER
 from agent_system.rag.retriever import top_rags
@@ -21,6 +23,11 @@ from agent_system.agent.system_prompts import system_prompt, researcher_prompt, 
 from agent_system.agent.get_model import get_llm
 # from agent_system.agent.local_loader import Format_agent
 from langchain_huggingface import HuggingFaceEmbeddings
+
+
+
+from langfuse.langchain import CallbackHandler
+langfuse_handler = CallbackHandler()
 
 EMBEDDING_MODEL_NAME = "BAAI/bge-m3"  # must match what you used in embedding.py
 
@@ -48,7 +55,7 @@ path_knowledge_index = "./data/vectorstore/faiss_index"  # set your FAISS index 
 knowledge_index: FAISS =FAISS.load_local(
     path_knowledge_index,
     embedding_model,
-    allow_dangerous_deserialization=True   # required for loading .pkl files
+    allow_dangerous_deserialization=True 
 )
 @tool
 def retriever_tool(query: str) -> str:
@@ -112,21 +119,36 @@ class AgentState(TypedDict):
     next: str
 
 
+_ROUTING_SUFFIX = (
+               "Give the conversation above, who should act next?"
+            "Or should we FINISH? Select one of: {options}",
+)
 
+SUPERVISOR_PROMPT_LOCAL = ChatPromptTemplate.from_messages([
+    ("system", system_prompt ),  
+    MessagesPlaceholder(variable_name="messages"),
+    ("human",_ROUTING_SUFFIX),    
+]).partial(options=str(options), members=", ".join(members))
+
+_VALID = set(options)  # {"FINISH", "RE_Retriever", "Researcher", "ScraperWeb", "Coder"}
+
+def _parse_next(text: str) -> str:
+    text = text.strip().strip('"').strip("'")
+    print(f"[DEBUG] parsed assistant output: '{text}'")
+    
+
+    for token in _VALID:
+        if token.lower() == text.lower():
+            return token
+
+    for token in _VALID:
+        if token.lower() in text.lower() or text.lower() in token.lower():
+            return token
+    
+    return "FINISH"
 def _make_agent(llm, tools, backend, name):
-    if name == "RE_Retriever":
-        prompt = rag_prompt
-    elif name == "Researcher":
-        prompt = researcher_prompt
-    elif name == "ScraperWeb":
-        prompt = scraper_prompt
-    elif name == "Coder":
-        prompt = coder_prompt
-    else:
-        raise f"Name of prompt opion mush be in {members}"
-
     if backend == "LOCAL":
-        return create_agent(llm, tools = tools, prompt = prompt)
+        return create_agent(llm, tools = tools)
     else:
         return create_react_agent(llm, tools =tools)
        
@@ -139,12 +161,23 @@ def agent_node(state, agent, name):
     return {"messages": [HumanMessage(content = results["messages"][-1].content, name = name)]}
     
 def supervisor_agent(state):
-    llm,_ = get_llm()
-    suppervisor_chain = prompt | llm.with_structured_output(RouterResponse) 
-    return  suppervisor_chain.invoke(state)
+    if backend == "OPENAI":
+        llm,_ = get_llm()
+        suppervisor_chain = prompt | llm.with_structured_output(RouterResponse) 
+        return  suppervisor_chain.invoke(state, config={"callbacks": [langfuse_handler]})
     
-    # supervisor_chain = prompt | llm.with_structured_output(RouteResponse)
-    # return supervisor_chain.invoke(state)
+    else:
+        llm, _ = get_llm()
+        chain = SUPERVISOR_PROMPT_LOCAL | llm | StrOutputParser()
+
+        raw_text = chain.invoke(state, config={"callbacks": [langfuse_handler]})
+        print(f"[DEBUG] raw_text: {repr(raw_text)}") 
+        decision = _parse_next(raw_text)
+        
+        # Return a dictionary with the update
+        return {"next": decision}
+        
+
 
       
 def create_graph():
@@ -191,24 +224,25 @@ def test(query):
 
 
 
-    # for s in graph.stream(
-    #     {
-    #         "messages":[
-    #             HumanMessage(content=query)
-    #         ]
-    #     }
-    # ):
-    #     if "__end__" not in s:
-    #         print(s)
+    for s in graph.stream(
+        {
+            "messages":[
+                HumanMessage(content=query)
+            ]
+        }
+    ):
+        if "__end__" not in s:
+            print(s)
+            print("---"*100)
 
     
-    result = graph.invoke(
-    {
-        "messages": [HumanMessage(content=query)]
-    }
-    )
-    print("---"*100)
-    print(result["messages"][-1].content)
+    # result = graph.invoke(
+    # {
+    #     "messages": [HumanMessage(content=query)]
+    # }
+    # )
+    # print("---"*100)
+    # print(result["messages"][-1].content)
            
 
 if __name__ =="__main__":
