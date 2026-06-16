@@ -23,7 +23,7 @@ Develop an Multi agent in **langgraphwith** and supervisor workflow  include **R
 
 
 
-### Hardware Requirements (Fine tune):
+### Hardware Requirements (Fine tune and use local model FT):
 
 GPU: 16GB+ VRAM (24GB recommended for larger models)<br>
 RAM: 32GB+ system memory<br>
